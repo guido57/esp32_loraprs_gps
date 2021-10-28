@@ -7,7 +7,7 @@ In this configuration, it reads the GPS coordinates (latitude and longitude) and
 - #define CFG_LORA_BW           125e3
 - #define CFG_LORA_SF           10
 - #define CFG_LORA_CR           5
-- you can change them in the file !(config.h), according to the settings of te digipeater you want to transmit to, 
+- you can change them in the file ![](config.h), according to the settings of te digipeater you want to transmit to, 
 
 
 # Wirings
