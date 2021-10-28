@@ -9,4 +9,4 @@ are disabled in config.h, but can be enabled again
 - For project description, please, visit our Wiki at https://github.com/sh123/esp32_loraprs/wiki
 - For discussions, visit https://github.com/sh123/esp32_loraprs/discussions
 
-![alt text](images/diagram.png)
+![alt text](images/ESP32-SX1278-GPS.PNG)
