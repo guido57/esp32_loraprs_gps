@@ -54,7 +54,7 @@ void Processor::queueSerialToRig(Cmd cmd, const byte *packet, int packetLength) 
 
   for (int i = 0; i < packetLength; i++) {
     byte rxByte = packet[i];
-
+ 
     if (rxByte == Marker::Fend) {
       result &= serialToRigQueue_.unshift(Marker::Fesc);
       result &= serialToRigQueue_.unshift(Marker::Tfend);
@@ -103,8 +103,7 @@ bool Processor::processRigToSerial()
 bool Processor::processSerialToRig()
 {
   bool allProcessed = false;
-
-  while (onSerialRxHasData() || !serialToRigQueue_.isEmpty()) {
+  while (onSerialRxHasData() || ! serialToRigQueue_.isEmpty()) {
     byte rxByte;
     if (onSerialRxHasData()) {
       if (onSerialRx(&rxByte)) {
@@ -115,6 +114,7 @@ bool Processor::processSerialToRig()
     }
     if (!serialToRigQueue_.isEmpty()) {
       rxByte = serialToRigQueue_.pop();
+      
       if (receiveByte(rxByte)) {
         allProcessed = true;
       } else {
@@ -141,11 +141,6 @@ bool Processor::processCommand(byte rxByte) {
       dataType_ = DataType::Control;
       cmdBuffer_.clear();
       break;
-    case Cmd::RebootRequested:
-      state_ = State::GetData;
-      dataType_ = DataType::Reboot;
-      cmdBuffer_.clear();
-      break;
     case Cmd::P:
       state_ = State::GetP;
       break;
@@ -165,6 +160,7 @@ bool Processor::processCommand(byte rxByte) {
 void Processor::processData(byte rxByte) {
   switch (rxByte) {
     case Marker::Fesc:
+
       state_ = State::Escape;
       break;
     case Marker::Fend:
@@ -172,13 +168,12 @@ void Processor::processData(byte rxByte) {
         onRigTxEnd();
       } else if (dataType_ == DataType::Control) {
         onRadioControlCommand(cmdBuffer_);
-      } else if (dataType_ == DataType::Reboot) {
-        onRebootCommand();
       }
       state_ = State::GetStart;
       break;
     default:
       if (dataType_ == DataType::Raw) {
+ 
         onRigTx(rxByte);
       } else if (dataType_ == DataType::Control) {
         cmdBuffer_.push_back(rxByte);
@@ -214,10 +209,12 @@ bool Processor::receiveByte(byte rxByte) {
       state_ = State::GetEnd;
       break;
     case State::GetData:
+
       processData(rxByte);
       break;
     case State::Escape:
       if (rxByte == Marker::Tfend) {
+
         onRigTx((byte)Marker::Fend);
         state_ = State::GetData;
       }
@@ -226,12 +223,14 @@ bool Processor::receiveByte(byte rxByte) {
         state_ = State::GetData;
       }
       else if (rxByte != Marker::Fend) {
+
         state_ = State::GetEnd;
       }
       break;
     default:
       // unknown state
-      state_ = State::GetStart;
+     Serial.printf("state=unkniwn > state changed to GetStart End\r\n");
+     state_ = State::GetStart;
       break;
   }
   return true;

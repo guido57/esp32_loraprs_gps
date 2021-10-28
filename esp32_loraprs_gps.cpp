@@ -1,11 +1,15 @@
+#include <Arduino.h>
+
 #include <arduino-timer.h>
 #include "WiFi.h"
+#include "loraprs_service.h"
+#include "mygps.h"
 
 #if __has_include("/tmp/esp32_loraprs_config.h")
 #pragma message("Using external config")
 #include "/tmp/esp32_loraprs_config.h"
 #else
-#pragma message("Using default built-in config")
+#pragma message("Using default config")
 #include "config.h"
 #endif
 
@@ -15,18 +19,11 @@
 #pragma message("Configured for server mode")
 #endif
 
-// When USE_RADIOLIB is defined then RadioLib will be used, otherwise arduino-LoRa will be used
-// When using RadioLib, default module is SX1278, if you are using
-// different module then update loraprs_service.h and loraprs_service.cpp
-// search for SX1278 and replace with your module name
-
-//#define USE_RADIOLIB
-#include "loraprs_service.h"
-
 void initializeConfig(LoraPrs::Config &cfg) {
-
+  
   // client/server mode switch
   cfg.IsClientMode = CFG_IS_CLIENT_MODE;
+  cfg.UseDisplay = CFG_USE_DISPLAY;
 
   // lora parameters
   cfg.LoraFreq = CFG_LORA_FREQ;
@@ -38,28 +35,29 @@ void initializeConfig(LoraPrs::Config &cfg) {
   cfg.LoraEnableCrc = CFG_LORA_ENABLE_CRC; // set to false for speech streaming data
 
   // lora pinouts
-  cfg.LoraPinSs = CFG_LORA_PIN_SS;
-  cfg.LoraPinRst = CFG_LORA_PIN_RST;
-  cfg.LoraPinDio0 = CFG_LORA_PIN_DIO0;
-  cfg.LoraPinDio1 = CFG_LORA_PIN_DIO1; // valid for radiolib only
+  cfg.LoraPinSs = CFG_LORA_PIN_SS;     // GPIO 18
+  cfg.LoraPinRst = CFG_LORA_PIN_RST;   // GPIO 14 - TMS
+  cfg.LoraPinDio0 = CFG_LORA_PIN_DIO0; // GPIO 26
   cfg.LoraUseIsr = CFG_LORA_USE_ISR;  // set to true for incoming packet ISR usage (stream mode, e.g. speech)
-  cfg.LoraUseCad = CFG_LORA_USE_CAD;  // carrier detect
+
+  // GPS pinout
+  #define RXD2 15
+  #define TXD2 12
 
   // aprs configuration
-  cfg.AprsHost = "rotate.aprs2.net";
+  cfg.AprsHost = "iz5oqo.duckdns.org";
   cfg.AprsPort = 14580;
   cfg.AprsLogin = CFG_APRS_LOGIN;
   cfg.AprsPass = CFG_APRS_PASS;
   cfg.AprsFilter = CFG_APRS_FILTER; // multiple filters are space separated
   cfg.AprsRawBeacon = CFG_APRS_RAW_BKN;
-  cfg.AprsRawBeaconPeriodMinutes = 20;
+  cfg.AprsRawBeaconPeriodMinutes = 1; //GG it was 20
 
   // bluetooth device name
   cfg.BtName = CFG_BT_NAME;
   cfg.BtEnableBle = CFG_BT_USE_BLE;
 
   // server mode wifi paramaters
-  cfg.WifiEnableAp = CFG_WIFI_ENABLE_AP;
   cfg.WifiSsid = CFG_WIFI_SSID;
   cfg.WifiKey = CFG_WIFI_KEY;
 
@@ -74,8 +72,7 @@ void initializeConfig(LoraPrs::Config &cfg) {
   cfg.EnableIsToRf = CFG_IS_TO_RF; // send data from aprsis to rf
   cfg.EnableRepeater = CFG_DIGIREPEAT; // digirepeat incoming packets
   cfg.EnableBeacon = CFG_BEACON;  // enable periodic AprsRawBeacon beacon to rf and aprsis if rf to aprsis is enabled
-  cfg.KissEnableExtensions = CFG_KISS_EXTENSIONS; // radio control and signal reports
-  cfg.KissEnableTcpIp = CFG_KISS_TCP_IP;  // enable KISS ovr TCP/IP as a server
+  cfg.EnableKissExtensions = CFG_KISS_EXTENSIONS; // radio control and signal reports
 
   // external ptt control
   cfg.PttEnable = CFG_PTT_ENABLE;
@@ -88,18 +85,32 @@ LoraPrs::Service loraPrsService;
 
 auto watchdogLedTimer = timer_create_default();
 
+bool toggleWatchdogLed(void *) {
+  digitalWrite(BUILTIN_LED, !digitalRead(BUILTIN_LED));
+  return true;
+}
+
+
 void setup() {
   pinMode(BUILTIN_LED, OUTPUT);
   digitalWrite(BUILTIN_LED, 1);
 
+  // Serial2 is used by GPS
+  Serial2.begin(9600, SERIAL_8N1, RXD2, TXD2);
+  
   Serial.begin(SERIAL_BAUD_RATE);
   while (!Serial);
   
   LoraPrs::Config config;
 
   initializeConfig(config);
+  
+  
   loraPrsService.setup(config);
 
+  //marco mod for sleep test
+  //esp_sleep_enable_timer_wakeup(10 * 1000 * 1000);
+  //esp_sleep_enable_ext0_wakeup((gpio_num_t)CFG_LORA_PIN_DIO0, 1);
   watchdogLedTimer.every(LED_TOGGLE_PERIOD, toggleWatchdogLed);
 }
 
@@ -108,7 +119,3 @@ void loop() {
   watchdogLedTimer.tick();
 }
 
-bool toggleWatchdogLed(void *) {
-  digitalWrite(BUILTIN_LED, !digitalRead(BUILTIN_LED));
-  return true;
-}

@@ -37,14 +37,12 @@ protected:
     TxTail = 0x04,
     SetHardware = 0x06,
     SignalReport = 0x07,
-    RebootRequested = 0x08,
     NoCmd = 0x80
   };
 
   enum DataType {
       Raw = 0,
-      Control,
-      Reboot
+      Control
   };
 
   static const int CfgSerialToRigQueueSize = 4096;
@@ -73,7 +71,6 @@ protected:
 
   virtual void onControlCommand(Cmd cmd, byte value) = 0;
   virtual void onRadioControlCommand(const std::vector<byte> &command) = 0;
-  virtual void onRebootCommand() = 0;
 
 private:
   bool receiveByte(byte rxByte);

@@ -23,12 +23,12 @@ public:
   String ToString() const;
   bool ToBinary(byte *txPayload, int bufferLength) const;
 
-  bool Digirepeat();
-  
-private:
   bool fromString(const String &callsign);
   bool fromBinary(const byte *rxPtr, int payloadLength);
 
+  bool Digirepeat();
+  
+  
 private:
   const int CallsignSize = 7;
   

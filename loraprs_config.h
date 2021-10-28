@@ -8,7 +8,8 @@ namespace LoraPrs {
 struct Config
 {
   bool IsClientMode;    // false - server mode, true - client mode (disables wifi and aprsis)
-
+  bool UseDisplay;      //false OLED off
+  
   // lora protocol parameters
   long LoraFreq;        // lora frequency, e.g. 433.775e6
   long LoraBw;          // lora bandwidth, e.g. 125e3
@@ -22,22 +23,18 @@ struct Config
   byte LoraPinSs;       // lora ss pin
   byte LoraPinRst;      // lora rst pin
   byte LoraPinDio0;     // lora dio0 pin
-  byte LoraPinDio1;     // lora dio1 pin
   bool LoraUseIsr;      // true to use interrupts, false for fallback polling, e.g. if Dio0 is not connected
-  bool LoraUseCad;      // use carrier detect before transmitting
 
   // bluetooth
   String BtName;        // bluetooth device name for the client, set to empty string to disable bluetooth in server mode
   bool BtEnableBle;     // bluetooth device presents as BLE rather than serial bluetooth e.g. for iOS devices
 
   // wifi
-  bool WifiEnableAp;    // true to run as access point
   String WifiSsid;      // wifi access point name
   String WifiKey;       // wifi access point key
 
   // kiss
-  bool KissEnableTcpIp; // true to enable KISS over TCP/IP as a server
-  bool KissEnableExtensions; // true - enable kiss extensions for radio control and signal reports
+  bool EnableKissExtensions; // true - enable kiss extensions for radio control and signal reports
 
   // aprsis connectivity
   int AprsPort;         // aprs server port, 14580

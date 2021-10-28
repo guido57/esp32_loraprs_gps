@@ -1,14 +1,7 @@
 #include "loraprs_service.h"
 
 namespace LoraPrs {
-
-byte Service::rxBuf_[256];
-
-#ifdef USE_RADIOLIB
-bool Service::interruptEnabled_ = true;
-std::shared_ptr<SX1278> Service::radio_;
-#endif
-
+  
 Service::Service()
   : Kiss::Processor()
   , csmaP_(CfgCsmaPersistence)
@@ -16,12 +9,7 @@ Service::Service()
   , csmaSlotTimePrev_(0)
   , serialBt_()
   , serialBLE_()
-  , kissServer_(new WiFiServer(CfgKissPort))
-  , isKissConn_(false)
 {
-#ifdef USE_RADIOLIB
-  interruptEnabled_ = true;
-#endif
 }
 
 void Service::setup(const Config &conf)
@@ -29,6 +17,8 @@ void Service::setup(const Config &conf)
   config_ = conf;  
   previousBeaconMs_ = 0;
 
+  MyNMEADecoder = MyGPS::NMEADecoder();
+ 
   ownCallsign_ = AX25::Callsign(config_.AprsLogin);
   if (!ownCallsign_.IsValid()) {
     Serial.println("Own callsign is not valid");
@@ -61,25 +51,30 @@ void Service::setup(const Config &conf)
     Serial.println("External PTT is enabled");
     pinMode(config_.PttPin, OUTPUT);
   }
+
+  if (config_.UseDisplay) {
+//    oled_.begin(&Adafruit128x64, 0x3C, 16);
+//    oled_.setFont(Adafruit5x7);
+//    oled_.clear();
+//    oled_.println("Hello world!");
+  }
+  
 }
 
 void Service::setupWifi(const String &wifiName, const String &wifiKey)
 {
-  WiFi.setHostname("loraprs");
-  if (config_.WifiEnableAp) {
-    Serial.println("WIFI is running in AP mode " + wifiName);
-    WiFi.softAP(wifiName.c_str(), wifiKey.c_str());    
-    Serial.println(WiFi.softAPIP());
-  } else {
+  if (!config_.IsClientMode) {
     Serial.print("WIFI connecting to " + wifiName);
+
+    WiFi.setHostname("loraprs");
     WiFi.mode(WIFI_STA);
     WiFi.begin(wifiName.c_str(), wifiKey.c_str());
-  
+
     int retryCnt = 0;
     while (WiFi.status() != WL_CONNECTED) {
       delay(CfgConnRetryMs);
       Serial.print(".");
-      if (retryCnt++ >= CfgConnRetryMaxTimes) {
+      if (retryCnt++ >= CfgWiFiConnRetryMaxTimes) {
         Serial.println("failed");
         return;
       }
@@ -87,17 +82,10 @@ void Service::setupWifi(const String &wifiName, const String &wifiKey)
     Serial.println("ok");
     Serial.println(WiFi.localIP());
   }
-  if (config_.KissEnableTcpIp) {
-    Serial.print("KISS TCP/IP server started on port "); Serial.println(CfgKissPort);
-    kissServer_->begin();
-  }
 }
 
 void Service::reconnectWifi() const
 {
-  // AP mode does not require re-connection
-  if (config_.WifiEnableAp) return;
-  
   Serial.print("WIFI re-connecting...");
 
   int retryCnt = 0;
@@ -105,18 +93,13 @@ void Service::reconnectWifi() const
     WiFi.reconnect();
     delay(CfgConnRetryMs);
     Serial.print(".");
-    if (retryCnt++ >= CfgConnRetryMaxTimes) {
+    if (retryCnt++ >= CfgWiFiConnRetryMaxTimes) {
       Serial.println("failed");
       return;
     }
   }
 
   Serial.println("ok");
-  Serial.println(WiFi.localIP());
-  
-  if (config_.KissEnableTcpIp) {
-    kissServer_->begin();
-  }
 }
 
 bool Service::reconnectAprsis()
@@ -143,46 +126,18 @@ void Service::setupLora(long loraFreq, long bw, int sf, int cr, int pwr, int syn
   Serial.print(pwr); Serial.print(", ");
   Serial.print(sync, 16); Serial.print(", ");
   Serial.print(enableCrc); Serial.print("...");
-
-  isImplicitHeaderMode_ = sf == 6;
-
-#ifdef USE_RADIOLIB
-  radio_ = std::make_shared<SX1278>(new Module(config_.LoraPinSs, config_.LoraPinDio0, config_.LoraPinRst, RADIOLIB_NC));
-  int state = radio_->begin((float)loraFreq / 1e6, (float)bw / 1e3, sf, cr, sync, pwr);
-  if (state != ERR_NONE) {
-    Serial.print("Radio start error: "); Serial.println(state);
-  }
-  radio_->setCRC(enableCrc);
-  //radio_->forceLDRO(false);
-  //radio_->setRfSwitchPins(4, 5);
-
-  radio_->clearDio0Action();
-  radio_->setDio0Action(onLoraDataAvailableIsr);
-
-  state = radio_->startReceive();
-  if (state != ERR_NONE) {
-    Serial.print("Receive start error: "); Serial.println(state);
-  }
-  
-#else // USE_RADIOLIB
-
+  Serial.printf("Lora Pins ss=%d, rst=%d, Dio0=%d",config_.LoraPinSs, config_.LoraPinRst, config_.LoraPinDio0);
   LoRa.setPins(config_.LoraPinSs, config_.LoraPinRst, config_.LoraPinDio0);
-
-  int retryCnt = 0;
+  
   while (!LoRa.begin(loraFreq)) {
     Serial.print(".");
     delay(CfgConnRetryMs);
-    if (retryCnt++ >= CfgConnRetryMaxTimes) {
-      Serial.println("failed");
-      return;
-    }
   }
   LoRa.setSyncWord(sync);
   LoRa.setSpreadingFactor(sf);
   LoRa.setSignalBandwidth(bw);
   LoRa.setCodingRate4(cr);
   LoRa.setTxPower(pwr);
-
   if (enableCrc) {
     LoRa.enableCrc();
   }
@@ -191,137 +146,148 @@ void Service::setupLora(long loraFreq, long bw, int sf, int cr, int pwr, int syn
     LoRa.onReceive(onLoraDataAvailableIsr);
     LoRa.receive();
   }
-#endif // USE_RADIOLIB
-
   Serial.println("ok");
 }
 
 void Service::setupBt(const String &btName)
 {
-  String btType = config_.BtEnableBle ? "BLE" : "BT";
-  Serial.print(btType + " init " + btName + "...");
-  
-  bool btOk = config_.BtEnableBle 
-    ? serialBLE_.begin(btName.c_str()) 
-    : serialBt_.begin(btName);
-  
-  if (btOk) {
-    Serial.println("ok");
+  if (config_.BtEnableBle) {
+    Serial.print("BLE init " + btName + "...");
+    if (serialBLE_.begin(btName.c_str())) {
+      Serial.println("ok");
+    }
+    else {
+      Serial.println("failed");
+    }
   }
+
   else {
-    Serial.println("failed");
+    Serial.print("BT init " + btName + "...");
+  
+    if (serialBt_.begin(btName)) {
+      Serial.println("ok");
+    }
+    else {
+      Serial.println("failed");
+    }
   }
 }
 
 void Service::loop()
-{ 
+{
   if (needsWifi() && WiFi.status() != WL_CONNECTED) {
     reconnectWifi();
   }
   if (needsAprsis() && !aprsisConn_.connected() && config_.EnablePersistentAprsConnection) {
     reconnectAprsis();
   }
-  if (config_.KissEnableTcpIp) {
-    attachKissNetworkClient();
-  }
 
+  MyNMEADecoder.mygps_loop();
+  
   // RX path, Rig -> Serial
   bool isRigToSerialProcessed = false;
 
-#ifdef USE_RADIOLIB
-  isRigToSerialProcessed = processRigToSerial();
-#else
   if (config_.LoraUseIsr) {
     isRigToSerialProcessed = processRigToSerial();
-  } else {
-     if (int packetSize = LoRa.parsePacket()) {
-        loraReceive(packetSize);
+  } else if (int packetSize = LoRa.parsePacket()) {
+        //loraReceive(packetSize);
         isRigToSerialProcessed = true;
-     }
+        Serial.printf("incoming packet size=%d RSSI=%d from LORA\r\nThe message is:\r\n",
+            packetSize,
+            LoRa.packetRssi()
+        );
+        // read packet
+        char payload[200];
+        for (int i = 0; i < packetSize; i++) {
+          payload[i] = (char) LoRa.read();
+          //Serial.printf("%c", cc);
+        }
+        
+        AX25::Callsign * cs = new AX25::Callsign();
+        cs->fromBinary((byte *)payload,7);
+        String scs = cs->ToString();
+        Serial.printf("Destination Callsign is %s\r\n",scs.c_str());
+        cs->fromBinary((byte *)(payload+7),7);
+        scs = cs->ToString();
+        Serial.printf("Source Callsign is %s\r\n",scs.c_str());
+        const byte * payload_ptr;
+        payload_ptr = (byte * ) payload;
+        AX25::Payload * pl = new AX25::Payload( payload_ptr, packetSize);
+        Serial.printf("payload ToString is %s\r\n", pl->ToString().c_str());        
+
   }
-#endif
 
   // TX path, Serial -> Rig
   if (!isRigToSerialProcessed) {
 
     long currentTime = millis();
-    if (!isLoraRxBusy() && currentTime > csmaSlotTimePrev_ + csmaSlotTime_ && random(0, 255) < csmaP_) {
+    if (currentTime > csmaSlotTimePrev_ + csmaSlotTime_ && random(0, 255) < csmaP_) {
       if (aprsisConn_.available() > 0) {
         onAprsisDataAvailable();
       }
       if (needsBeacon()) {
+        //Serial.printf("Service: need to send beacon\r\n");
         sendPeriodicBeacon();
+        //Serial.printf("Service: sendPeriodicBeacon exit\r\n");
+        
       }
-      bool allTxProcessed = processSerialToRig();
-      if (allTxProcessed) {
-#ifdef USE_RADIOLIB
-        int state = radio_->startReceive();
-        if (state != ERR_NONE) {
-          Serial.print("Start receive error: "); Serial.println(state);
-        }
-#else
-        if (config_.LoraUseIsr) {
-          LoRa.receive();
-        }
-#endif
+      if (processSerialToRig() && config_.LoraUseIsr) {
+        Serial.printf("Serial->Rig LoRa.receive\r\n");
+        LoRa.receive();
       }
       csmaSlotTimePrev_ = currentTime;
     }
   }
+   
   delay(CfgPollDelayMs);
 }
 
-bool Service::isLoraRxBusy() {
-#ifdef USE_RADIOLIB
-  return cfg_.LoraUseCad && (radio_->getModemStatus() & 0x01); // SX1278_STATUS_SIG_DETECT
-#else
-  return false;
-#endif
-}
-
-#ifdef USE_RADIOLIB
-
-ICACHE_RAM_ATTR void Service::onLoraDataAvailableIsr() {
-  if (interruptEnabled_) {
-    int packetSize = radio_->getPacketLength();
-  
-    if (packetSize > 0) {
-      
-      int state = radio_->readData(rxBuf_, packetSize);
-      if (state == ERR_NONE) {
-        queueRigToSerialIsr(Cmd::Data, rxBuf_, packetSize);
-      } else {
-        Serial.print("Read data error: "); Serial.println(state);
-      }
-      
-      state = radio_->startReceive();
-      if (state != ERR_NONE) {
-        Serial.print("Start receive error: "); Serial.println(state);
-      }
-    }
-  }
-}
-
-#else // USE_RADIOLIB
-
 ICACHE_RAM_ATTR void Service::onLoraDataAvailableIsr(int packetSize)
 {
+  // TODO, move to separate ESP32 task
   int rxBufIndex = 0;
+  byte rxBuf[packetSize];
 
   for (int i = 0; i < packetSize; i++) {
-    rxBuf_[rxBufIndex++] = LoRa.read();
+    rxBuf[rxBufIndex++] = LoRa.read();
   }
-  queueRigToSerialIsr(Cmd::Data, rxBuf_, rxBufIndex);
+  queueRigToSerialIsr(Cmd::Data, rxBuf, rxBufIndex);
 }
-
-#endif // USE_RADIOLIB
 
 void Service::sendPeriodicBeacon()
 {
+ 
   long currentMs = millis();
 
   if (previousBeaconMs_ == 0 || currentMs - previousBeaconMs_ >= config_.AprsRawBeaconPeriodMinutes * 60 * 1000) {
-      AX25::Payload payload(config_.AprsRawBeacon);
+      Serial.printf("Sending periodic beacon at %lu millis\r\n", millis());
+
+      if(MyNMEADecoder.num_satellites == 0){
+        Serial.printf("Cannot send beacon because GPS didn't fix yet! at %lu\r\n",millis());
+        return;
+      }
+
+      //char * lat = MyNMEADecoder.getLatDMS();
+      //char * lon = MyNMEADecoder.getLonDMS();
+      char * lat = MyNMEADecoder.lat_degrees;
+      char * lon = MyNMEADecoder.lon_degrees;
+      Serial.printf("lat=%s lon=%s\r\n",lat,lon);
+      // Insert latitude and longitude at proper positions
+      //          1         2         3         4 
+      //01234567890123456789012345678901234567890123456789
+      //IW5ALZ-7>APZMDM,WIDE1-1:!4303.51NL01036.59E&LoRA Tracker 433.775MHz/BW125/SF10/CR5" //Siena
+
+      String payload_ll = config_.AprsRawBeacon.substring(0,25) + 
+                          String(lat) +
+                          config_.AprsRawBeacon.substring(33,34) + 
+                          String(lon) + 
+                          config_.AprsRawBeacon.substring(43); 
+      Serial.printf("Original payload is %s\r\n",config_.AprsRawBeacon.c_str());                    
+      Serial.printf("payload_ll       is %s\r\n",payload_ll.c_str());                    
+
+      //AX25::Payload payload(config_.AprsRawBeacon);
+      AX25::Payload payload(payload_ll);
+      
       if (payload.IsValid()) {
         sendAX25ToLora(payload);
         if (config_.EnableRfToIs) {
@@ -382,8 +348,8 @@ void Service::sendSignalReportEvent(int rssi, float snr)
 {
   struct SignalReport signalReport;
 
-  signalReport.rssi = htobe16(rssi);
-  signalReport.snr = htobe16(snr * 100);
+//  signalReport.rssi = htobe16(rssi);
+//  signalReport.snr = htobe16(snr * 100);
 
   sendRigToSerial(Cmd::SignalReport, (const byte *)&signalReport, sizeof(SignalReport));
 }
@@ -402,35 +368,20 @@ bool Service::sendAX25ToLora(const AX25::Payload &payload)
 
 void Service::onRigPacket(void *packet, int packetLength)
 {  
-#ifdef USE_RADIOLIB
-  long frequencyErrorHz = radio_->getFrequencyError();
-#else
-  long frequencyErrorHz = LoRa.packetFrequencyError();
-#endif
-  if (config_.EnableAutoFreqCorrection && abs(frequencyErrorHz) > config_.AutoFreqCorrectionDeltaHz) {
-    config_.LoraFreq -= frequencyErrorHz;
-    Serial.print("Correcting frequency: "); Serial.println(frequencyErrorHz);
-#ifdef USE_RADIOLIB
-    radio_->setFrequency((float)config_.LoraFreq / 1e6);
-    int state = radio_->startReceive();
-    if (state != ERR_NONE) {
-      Serial.print("Start receive error: "); Serial.println(state);
-    }
-#else
+  long frequencyError = LoRa.packetFrequencyError();
+
+  if (config_.EnableAutoFreqCorrection && abs(frequencyError) > config_.AutoFreqCorrectionDeltaHz) {
+    config_.LoraFreq -= frequencyError;
+    Serial.print("Correcting frequency: "); Serial.println(frequencyError);
     LoRa.setFrequency(config_.LoraFreq);
     if (config_.LoraUseIsr) {
       LoRa.idle();
       LoRa.receive();
     }
-#endif
   }
 
-  if (config_.KissEnableExtensions) {
-#ifdef USE_RADIOLIB
-    sendSignalReportEvent(radio_->getRSSI(), radio_->getSNR());
-#else
+  if (config_.EnableKissExtensions) {
     sendSignalReportEvent(LoRa.packetRssi(), LoRa.packetSnr());
-#endif
   }
 
   if (!config_.IsClientMode) {
@@ -438,19 +389,17 @@ void Service::onRigPacket(void *packet, int packetLength)
   }
 }
 
-#ifndef USE_RADIOLIB
 void Service::loraReceive(int packetSize)
 {
   int rxBufIndex = 0;
   byte rxBuf[packetSize];
-  
+
   while (LoRa.available()) {
     rxBuf[rxBufIndex++] = LoRa.read();
   }
   sendRigToSerial(Cmd::Data, rxBuf, rxBufIndex);
   onRigPacket(rxBuf, rxBufIndex);
 }
-#endif
 
 void Service::processIncomingRawPacketAsServer(const byte *packet, int packetLength) {
 
@@ -458,15 +407,10 @@ void Service::processIncomingRawPacketAsServer(const byte *packet, int packetLen
 
   if (payload.IsValid()) {
 
-#ifdef USE_RADIOLIB
-    float snr = radio_->getSNR();
-    int rssi = radio_->getRSSI();
-    long frequencyError = radio_->getFrequencyError();
-#else
     float snr = LoRa.packetSnr();
     int rssi = LoRa.packetRssi();
     long frequencyError = LoRa.packetFrequencyError();
-#endif
+    
     String signalReport = String(" ") +
       String("rssi: ") +
       String(snr < 0 ? rssi + snr : rssi) +
@@ -502,82 +446,28 @@ bool Service::onRigTxBegin()
   } else {
     delay(CfgPollDelayMs);
   }
-#ifdef USE_RADIOLIB
-  return true;
-#else
-  return (LoRa.beginPacket(isImplicitHeaderMode_) == 1);
-#endif
+  return (LoRa.beginPacket() == 1);
 }
 
 void Service::onRigTx(byte b)
 {
-#ifdef USE_RADIOLIB
-  txQueue_.push(b);
-#else
   LoRa.write(b);
-#endif
 }
 
 void Service::onRigTxEnd()
 {
-#ifdef USE_RADIOLIB
-  int txPacketSize = txQueue_.size();
-  byte txBuf[txPacketSize];
-  
-  for (int i = 0; i < txPacketSize; i++) {
-    txBuf[i] = txQueue_.shift();
-  }
-
-  interruptEnabled_ = false;
-  int state = radio_->transmit(txBuf, txPacketSize);
-  if (state != ERR_NONE) {
-    Serial.print("TX error: "); Serial.println(state);
-  }
-  interruptEnabled_ = true;
-#endif
-
   if (config_.PttEnable) {
-#ifndef USE_RADIOLIB
     LoRa.endPacket(false);
-#endif
     delay(config_.PttTxTailMs);
     digitalWrite(config_.PttPin, LOW);
   } else {
-#ifndef USE_RADIOLIB
     LoRa.endPacket(true);
-#endif
-  }
-}
-
-void Service::attachKissNetworkClient() 
-{
-  // connected, client dropped off
-  if (isKissConn_) {
-    if (!kissConn_.connected()) {
-      Serial.println("KISS TCP/IP client disconnected");
-      isKissConn_ = false;
-      kissConn_.stop();
-    }
-  }
-  WiFiClient wifiClient = kissServer_->available();
-  // new client connected
-  if (wifiClient && wifiClient.connected()) {
-    // drop off current one
-    if (isKissConn_) {
-      kissConn_.stop();
-    }
-    Serial.println("New KISS TCP/IP client connected");
-    kissConn_ = wifiClient;
-    isKissConn_ = true;
   }
 }
 
 void Service::onSerialTx(byte b)
 {
-  if (isKissConn_) {
-    kissConn_.write(b);
-  }
-  else if (config_.BtEnableBle) {
+  if (config_.BtEnableBle) {
     serialBLE_.write(b);
   }
   else {
@@ -587,10 +477,7 @@ void Service::onSerialTx(byte b)
 
 bool Service::onSerialRxHasData()
 {
-  if (isKissConn_) {
-    return kissConn_.available();
-  }
-  else if (config_.BtEnableBle) {
+  if (config_.BtEnableBle) {
     return serialBLE_.available();
   }
   else {
@@ -600,21 +487,7 @@ bool Service::onSerialRxHasData()
 
 bool Service::onSerialRx(byte *b)
 {
-  int rxResult;
-  
-  if (isKissConn_) {
-    rxResult = kissConn_.read();
-    // client dropped off
-    if (rxResult == -1) {
-      kissConn_.stop();
-      isKissConn_ = false;
-    }
-  }
-  else {
-    rxResult = config_.BtEnableBle 
-      ? serialBLE_.read() 
-      : serialBt_.read();
-  }
+  int rxResult = config_.BtEnableBle ? serialBLE_.read() : serialBt_.read();
   if (rxResult == -1) {
     return false;
   }
@@ -648,28 +521,25 @@ void Service::onControlCommand(Cmd cmd, byte value)
 
 void Service::onRadioControlCommand(const std::vector<byte> &rawCommand) {
 
-  if (config_.KissEnableExtensions && rawCommand.size() == sizeof(SetHardware)) {
+ Serial.println("onRadioControlCommand");
+ if (config_.EnableKissExtensions && rawCommand.size() == sizeof(SetHardware)) {
+ 
+    
     const struct SetHardware * setHardware = reinterpret_cast<const struct SetHardware*>(rawCommand.data());
     
-    config_.LoraFreq = be32toh(setHardware->freq);
-    config_.LoraBw = be32toh(setHardware->bw);
-    config_.LoraSf = be16toh(setHardware->sf);
-    config_.LoraCodingRate = be16toh(setHardware->cr);
-    config_.LoraPower = be16toh(setHardware->pwr);
-    config_.LoraSync = be16toh(setHardware->sync);
-    config_.LoraEnableCrc = setHardware->crc;
+//    config_.LoraFreq = be32toh(setHardware->freq);
+//    config_.LoraBw = be32toh(setHardware->bw);
+//    config_.LoraSf = be16toh(setHardware->sf);
+//    config_.LoraCodingRate = be16toh(setHardware->cr);
+//    config_.LoraPower = be16toh(setHardware->pwr);
+//    config_.LoraSync = be16toh(setHardware->sync);
+//    config_.LoraEnableCrc = setHardware->crc;
 
     setupLora(config_.LoraFreq, config_.LoraBw, config_.LoraSf, 
       config_.LoraCodingRate, config_.LoraPower, config_.LoraSync, config_.LoraEnableCrc);
   } else {
     Serial.println("Radio control command of wrong size");
   }
-}
-
-void Service::onRebootCommand()
-{
-  Serial.println("Reboot requested");
-  ESP.restart();
 }
 
 } // LoraPrs

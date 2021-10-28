@@ -3,25 +3,23 @@
 
 #include <Arduino.h>
 #include <SPI.h>
-
-#ifdef USE_RADIOLIB
-#include <RadioLib.h>
-#pragma message("Using RadioLib")
-#else
 #include <LoRa.h>
-#pragma message("Using arduino-LoRa")
-#endif
-
 #include <WiFi.h>
-#include <endian.h>
+#include <Wire.h>
+//#include "SSD1306Ascii.h"
+//#include "SSD1306AsciiWire.h" 
+//#include <endian.h>
 
 #include "BluetoothSerial.h"
 #include "ble_serial.h"
 #include "ax25_payload.h"
 #include "kiss_processor.h"
 #include "loraprs_config.h"
+#include "mygps.h"
+
 
 namespace LoraPrs {
+
 
 class Service : public Kiss::Processor
 {
@@ -38,18 +36,12 @@ private:
 
   void reconnectWifi() const;
   bool reconnectAprsis();
-  void attachKissNetworkClient();
 
-  bool isLoraRxBusy();
-#ifdef USE_RADIOLIB
-  void onLoraDataAvailable();
-  static ICACHE_RAM_ATTR void onLoraDataAvailableIsr();
-#else
   static ICACHE_RAM_ATTR void onLoraDataAvailableIsr(int packetSize);
-  void loraReceive(int packetSize);
-#endif
-  void onAprsisDataAvailable();
   
+  void loraReceive(int packetSize);
+  void onAprsisDataAvailable();
+
   void sendSignalReportEvent(int rssi, float snr);
   void sendPeriodicBeacon();
   void sendToAprsis(const String &aprsMessage);
@@ -57,14 +49,9 @@ private:
   void processIncomingRawPacketAsServer(const byte *packet, int packetLength);
   
   inline bool needsAprsis() const { 
-    return !config_.IsClientMode  // only in server mode
-      && (config_.EnableRfToIs || config_.EnableIsToRf)  // rx/tx igate enabled
-      && !config_.WifiEnableAp;  // wifi is NOT in AP mode
+    return !config_.IsClientMode && (config_.EnableRfToIs || config_.EnableIsToRf); 
   }
-  inline bool needsWifi() const { 
-    return needsAprsis()  // aprsis is needed
-      || config_.KissEnableTcpIp; // or kiss over tcp ip is enabled
-  }
+  inline bool needsWifi() const { return needsAprsis(); }
   inline bool needsBt() const { return config_.IsClientMode; }
   inline bool needsBeacon() const { return !config_.IsClientMode && config_.EnableBeacon; }
 
@@ -80,7 +67,6 @@ protected:
 
   virtual void onControlCommand(Cmd cmd, byte value);
   virtual void onRadioControlCommand(const std::vector<byte> &command);
-  virtual void onRebootCommand();
 
 private:
   struct SetHardware {
@@ -104,22 +90,22 @@ private:
   // processor config
   const int CfgConnRetryMs = 500;           // connection retry delay, e.g. wifi
   const int CfgPollDelayMs = 5;             // main loop delay
-  const int CfgConnRetryMaxTimes = 10;      // number of connection retries
+  const int CfgWiFiConnRetryMaxTimes = 10;  // wifi number of connection retries
   const int CfgMaxAX25PayloadSize = 512;    // maximum ax25 payload size
   const int CfgMaxAprsInMessageSize = 255;  // maximum aprsis to rf message size
 
   // csma parameters, overriden with KISS commands
   const long CfgCsmaPersistence = 100;  // 255 for real time, lower for higher traffic
   const long CfgCsmaSlotTimeMs = 500;   // 0 for real time, otherwise set to average tx duration
-
-  // kiss static parameters
-  const int CfgKissPort = 8001;             // kiss tcp/ip server port
+  
 private:
   // config
   Config config_;
   String aprsLoginCommand_;
   AX25::Callsign ownCallsign_;
-  bool isImplicitHeaderMode_;
+
+  //GPS
+  MyGPS::NMEADecoder MyNMEADecoder;
 
   // csma
   byte csmaP_;
@@ -130,19 +116,10 @@ private:
   long previousBeaconMs_;
     
   // peripherals
-  static byte rxBuf_[256];
-#ifdef USE_RADIOLIB
-  static bool interruptEnabled_;
-  CircularBuffer<uint8_t, 256> txQueue_;
-  static std::shared_ptr<SX1278> radio_;
-#endif
   BluetoothSerial serialBt_;
   BLESerial serialBLE_;
   WiFiClient aprsisConn_;
-  
-  std::shared_ptr<WiFiServer> kissServer_;
-  WiFiClient kissConn_;
-  bool isKissConn_;
+//  SSD1306AsciiWire oled_;
 };
 
 } // LoraPrs
