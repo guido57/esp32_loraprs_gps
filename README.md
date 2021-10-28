@@ -2,6 +2,7 @@
 This project is forked from https://github.com/sh123/esp32_loraprs to reduce it to a simple LoRa APRS beacon and tracker, but adding a GPS module.
 
 In this configuration, it reads the GPS coordinates (latitude and longitude) and sends them to a LoRa APRS digipeater with the following settings:
+
 #define CFG_LORA_FREQ         433.775e6 
 #define CFG_LORA_BW           125e3
 #define CFG_LORA_SF           10
