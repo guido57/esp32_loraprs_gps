@@ -1,5 +1,5 @@
-This project is forked from https://github.com/sh123/esp32_loraprs to convert to obtain a simple LoRa APRS beacon and tracker, adding a GPS module.
-The functions: 
+This project is forked from https://github.com/sh123/esp32_loraprs to reduce it to a simple LoRa APRS beacon and tracker, but adding a GPS module.
+For this eason, the functions: 
 - LoRa APRSDroid KISS Bluetooth modem
 - LoRa APRS-IS RX/TX iGate server over WiFI
 - digipeater
