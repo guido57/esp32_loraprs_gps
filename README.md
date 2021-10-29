@@ -35,7 +35,7 @@ are disabled in config.h, but can be enabled again (anyhow, I didn't try!)
 # Further implementations
 
 ## This ESP32 SX1276 NEO6M module from LILYGO  
-![alt text](http://www.lilygo.cn/prod_view.aspx?TypeId=50044&Id=1317&FId=t3:50044:3) 
+![alt text](http://www.lilygo.cn/Private/ProductImg/Other//20200624142122187%E2%88%AE2.jpg) 
 would appear to cover perfectly the hardware needs of this software, apart from the display, not implemented at the moment.
 I ordered it on ![Bangood](https://it.banggood.com/LILYGO-TTGO-Meshtastic-T-Beam-V1_1-ESP32-433-or-915-or-923Mhz-WiFi-Bluetooth-ESP32-GPS-NEO-6M-SMA-18650-Battery-Holder-With-OLED-p-1727472.html?rmmds=myorder&cur_warehouse=CN&ID=513922) and I'll update these notes when tested.
 
