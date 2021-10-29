@@ -12,6 +12,9 @@ In this configuration, it reads the GPS coordinates (latitude and longitude) and
 
 - you can change them in the file https://github.com/guido57/esp32_loraprs_gps/config.h, according to the settings of the digipeater you want to transmit to.
 
+# Overview
+
+![alt text](images/esp32_loraprs_gps_overview.PNG)
 
 # Wirings
 ![alt text](images/ESP32-SX1278-GPS.PNG)
