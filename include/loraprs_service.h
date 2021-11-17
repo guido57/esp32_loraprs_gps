@@ -10,6 +10,9 @@
 //#include "SSD1306AsciiWire.h" 
 //#include <endian.h>
 
+#include <LiquidCrystal_PCF8574.h>
+
+
 #include "BluetoothSerial.h"
 #include "ble_serial.h"
 #include "ax25_payload.h"
@@ -19,6 +22,7 @@
 
 
 namespace LoraPrs {
+
 
 
 class Service : public Kiss::Processor
@@ -54,6 +58,9 @@ private:
   inline bool needsWifi() const { return needsAprsis(); }
   inline bool needsBt() const { return config_.IsClientMode; }
   inline bool needsBeacon() const { return !config_.IsClientMode && config_.EnableBeacon; }
+
+  int LCD_show = -1;
+
 
 protected:
   virtual bool onRigTxBegin();

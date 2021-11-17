@@ -5,10 +5,14 @@ namespace MyGPS{
 
     class NMEADecoder{
         public:
+
+            NMEADecoder();
+
             int num_satellites = 0;
             char lat_degrees[100] ;
             char lon_degrees[100] ;
-            
+            char gps_time[9];
+
             unsigned long LastFixAtMsecs; // = 1440*60*1000;// msecs in one day
 
             void mygps_loop();

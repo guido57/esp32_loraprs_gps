@@ -164,6 +164,24 @@ bool Payload::fromBinary(const byte *rxPayload, int payloadLength)
   return true;
 }
 
+/*
+exempli gratia
+IW5ALZ-7>APZMDM,WIDE1-1:!4319.15N/01120.61E-LoRA Tracker 433.775MHz/BW125/SF10/CR5
+
+field                                             description
+IW5ALZ-7                                          src-addr 7 bytes encoded on 6 bytes
+>                                                 fixed 
+APZMDM                                            APZ* is an experimental software version number  
+,
+WIDE1-1                                           digipeated once, WIDE1-2 digipeated twice, ...
+:                                                 a message is following
+!                                                 the message contains location coordinates and no timestamp
+4319.15N                                          latitude 
+/                                                 primary symbol table is used
+01120.61E                                         longitude
+-                                                 the symbol "VHF house" in the primary symbol table
+LoRA Tracker 433.775MHz/BW125/SF10/CR5            the message 
+*/
 bool Payload::fromString(const String &textPayload)
 {
   String inputText = textPayload;

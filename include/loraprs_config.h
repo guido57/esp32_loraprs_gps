@@ -62,6 +62,8 @@ struct Config
   int PttPin;                           // esp pin to set high on transmit
   int PttTxDelayMs;                     // ptt tx delay
   int PttTxTailMs;                      // ptt tx tail
+
+  bool UseGPS;                          // true - wait for GPS before sending beacon
 };
 
 } // LoraPrs

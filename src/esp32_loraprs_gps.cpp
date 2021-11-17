@@ -19,6 +19,7 @@
 #pragma message("Configured for server mode")
 #endif
 
+
 void initializeConfig(LoraPrs::Config &cfg) {
   
   // client/server mode switch
@@ -79,6 +80,10 @@ void initializeConfig(LoraPrs::Config &cfg) {
   cfg.PttPin = CFG_PTT_PIN;
   cfg.PttTxDelayMs = CFG_PTT_TX_DELAY_MS;
   cfg.PttTxTailMs = CFG_PTT_TX_TAIL_MS;
+
+  // GPS 
+  cfg.UseGPS = CFG_USE_GPS;     // if true, wait for GPS before sending beacon to LORA
+
 }
 
 LoraPrs::Service loraPrsService;
@@ -112,10 +117,11 @@ void setup() {
   //esp_sleep_enable_timer_wakeup(10 * 1000 * 1000);
   //esp_sleep_enable_ext0_wakeup((gpio_num_t)CFG_LORA_PIN_DIO0, 1);
   watchdogLedTimer.every(LED_TOGGLE_PERIOD, toggleWatchdogLed);
+
 }
 
 void loop() {
   loraPrsService.loop();
-  watchdogLedTimer.tick();
+  //watchdogLedTimer.tick();
 }
 

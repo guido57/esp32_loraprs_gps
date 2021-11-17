@@ -12,9 +12,13 @@ Service::Service()
 {
 }
 
+LiquidCrystal_PCF8574 lcd(0x27); // set the LCD address to 0x27 for a 16 chars and 2 line display
+
+
 void Service::setup(const Config &conf)
 {
   config_ = conf;  
+  
   previousBeaconMs_ = 0;
 
   MyNMEADecoder = MyGPS::NMEADecoder();
@@ -57,8 +61,24 @@ void Service::setup(const Config &conf)
 //    oled_.setFont(Adafruit5x7);
 //    oled_.clear();
 //    oled_.println("Hello world!");
+  
   }
   
+  // LCD 16x2 SETUP
+  Wire.begin();
+  Wire.beginTransmission(0x27);
+  int LCD_error = Wire.endTransmission();
+  Serial.print("Error: ");
+  Serial.print(LCD_error);
+
+  if (LCD_error == 0) {
+    Serial.println(": LCD found.");
+    LCD_show = 0;
+    lcd.begin(16, 2); // initialize the lcd
+
+  } else {
+    Serial.println(": LCD not found.");
+  } 
 }
 
 void Service::setupWifi(const String &wifiName, const String &wifiKey)
@@ -192,29 +212,48 @@ void Service::loop()
   } else if (int packetSize = LoRa.parsePacket()) {
         //loraReceive(packetSize);
         isRigToSerialProcessed = true;
-        Serial.printf("incoming packet size=%d RSSI=%d from LORA\r\nThe message is:\r\n",
+        int snr = LoRa.packetSnr();
+        int rssi = LoRa.packetRssi();
+        int dbm = snr < 0 ? rssi + snr : rssi;
+        Serial.printf("%s incoming packet size=%d RSSI=%d SNR=%d dBm=%d from LORA\r\n",
+            MyNMEADecoder.gps_time,
             packetSize,
-            LoRa.packetRssi()
+            rssi,
+            snr,
+            dbm
         );
-        // read packet
-        char payload[200];
-        for (int i = 0; i < packetSize; i++) {
-          payload[i] = (char) LoRa.read();
-          //Serial.printf("%c", cc);
-        }
         
-        AX25::Callsign * cs = new AX25::Callsign();
-        cs->fromBinary((byte *)payload,7);
-        String scs = cs->ToString();
-        Serial.printf("Destination Callsign is %s\r\n",scs.c_str());
-        cs->fromBinary((byte *)(payload+7),7);
-        scs = cs->ToString();
-        Serial.printf("Source Callsign is %s\r\n",scs.c_str());
-        const byte * payload_ptr;
-        payload_ptr = (byte * ) payload;
-        AX25::Payload * pl = new AX25::Payload( payload_ptr, packetSize);
-        Serial.printf("payload ToString is %s\r\n", pl->ToString().c_str());        
+        lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.printf("%s %ddBm",
+          MyNMEADecoder.gps_time,
+          dbm
+        ); 
+        
+        // read packet
+        //char payload[200];
+        //for (int i = 0; i < packetSize; i++) {
+        //  payload[i] = (char) LoRa.read();
+          //Serial.printf("%c", cc);
+        //}
 
+        int rxBufIndex = 0;
+        byte rxBuf[packetSize];
+
+        while (LoRa.available()) {
+          rxBuf[rxBufIndex++] = LoRa.read();
+        }
+
+        // decode the payload and print it on Serial and on LCD 
+        //const byte * payload_ptr;
+        //payload_ptr = (byte * ) rxBuf;
+        //AX25::Payload * pl = new AX25::Payload( payload_ptr, packetSize);
+        AX25::Payload * pl = new AX25::Payload( rxBuf, packetSize);
+        Serial.printf("%s\r\n", pl->ToString().c_str());  
+        digitalWrite(BUILTIN_LED, LOW); // turn off the LED
+
+        lcd.setCursor(0, 1);
+        lcd.printf("%s", pl->ToString().substring(0,15).c_str());
   }
 
   // TX path, Serial -> Rig
@@ -256,36 +295,48 @@ ICACHE_RAM_ATTR void Service::onLoraDataAvailableIsr(int packetSize)
 
 void Service::sendPeriodicBeacon()
 {
- 
+  lcd.setBacklight(255);
+
   long currentMs = millis();
 
   if (previousBeaconMs_ == 0 || currentMs - previousBeaconMs_ >= config_.AprsRawBeaconPeriodMinutes * 60 * 1000) {
-      Serial.printf("Sending periodic beacon at %lu millis\r\n", millis());
-
-      if(MyNMEADecoder.num_satellites == 0){
-        Serial.printf("Cannot send beacon because GPS didn't fix yet! at %lu\r\n",millis());
+      
+      if(MyNMEADecoder.num_satellites == 0 && config_.UseGPS){
+        Serial.printf("Cannot send beacon because GPS didn't fix yet! at %lu\r",millis());
+        lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.printf("Waiting for GPS "); 
+        lcd.setCursor(0, 1);
+        lcd.printf("%lu", millis()); 
         return;
       }
 
-      //char * lat = MyNMEADecoder.getLatDMS();
-      //char * lon = MyNMEADecoder.getLonDMS();
-      char * lat = MyNMEADecoder.lat_degrees;
-      char * lon = MyNMEADecoder.lon_degrees;
-      Serial.printf("lat=%s lon=%s\r\n",lat,lon);
-      // Insert latitude and longitude at proper positions
-      //          1         2         3         4 
-      //01234567890123456789012345678901234567890123456789
-      //IW5ALZ-7>APZMDM,WIDE1-1:!4303.51NL01036.59E&LoRA Tracker 433.775MHz/BW125/SF10/CR5" //Siena
+      Serial.printf("%s Sending periodic beacon.\r\n", 
+          MyNMEADecoder.gps_time
+      );
 
-      String payload_ll = config_.AprsRawBeacon.substring(0,25) + 
-                          String(lat) +
-                          config_.AprsRawBeacon.substring(33,34) + 
-                          String(lon) + 
-                          config_.AprsRawBeacon.substring(43); 
-      Serial.printf("Original payload is %s\r\n",config_.AprsRawBeacon.c_str());                    
-      Serial.printf("payload_ll       is %s\r\n",payload_ll.c_str());                    
+      // get the raw beacon message
+      String payload_ll = config_.AprsRawBeacon;
 
-      //AX25::Payload payload(config_.AprsRawBeacon);
+      if(config_.UseGPS){
+        // change GPS coordinates
+        char * lat = MyNMEADecoder.lat_degrees;
+        char * lon = MyNMEADecoder.lon_degrees;
+        //Serial.printf("lat=%s lon=%s\r\n",lat,lon);
+        // Insert latitude and longitude at proper positions
+        //          1         2         3         4 
+        //01234567890123456789012345678901234567890123456789
+        //IW5ALZ-7>APZMDM,WIDE1-1:!4303.51NL01036.59E&LoRA Tracker 433.775MHz/BW125/SF10/CR5" //Siena
+
+        payload_ll = config_.AprsRawBeacon.substring(0,25) + 
+                            String(lat) +
+                            config_.AprsRawBeacon.substring(33,34) + 
+                            String(lon) + 
+                            config_.AprsRawBeacon.substring(43); 
+        //Serial.printf("Original payload is %s\r\n",config_.AprsRawBeacon.c_str());                    
+        //Serial.printf("payload_ll       is %s\r\n",payload_ll.c_str());                    
+     
+      }
       AX25::Payload payload(payload_ll);
       
       if (payload.IsValid()) {
@@ -293,10 +344,20 @@ void Service::sendPeriodicBeacon()
         if (config_.EnableRfToIs) {
           sendToAprsis(payload.ToString());
         }
-        Serial.println("Periodic beacon is sent");
+        digitalWrite(BUILTIN_LED, HIGH); // turn on the LED
+        Serial.printf("%s %s is sent.\r\n",
+            MyNMEADecoder.gps_time,
+            payload_ll.c_str());
+  
+  
+        lcd.clear();
+        lcd.setCursor(0, 0);
+        lcd.printf("%s",  payload_ll.substring(0,15).c_str() );
+        lcd.setCursor(0, 1);
+        lcd.printf("%s",  payload_ll.substring(16,31).c_str() );
       }
       else {
-        Serial.println("Beacon payload is invalid");
+        Serial.printf("Beacon payload %s is invalid\r\n",payload_ll.c_str());
       }
       previousBeaconMs_ = currentMs;
   }

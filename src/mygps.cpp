@@ -4,6 +4,12 @@
 
 namespace MyGPS{
 
+
+NMEADecoder::NMEADecoder(){
+
+     gps_time[0] = 0;
+}
+
 char * NMEADecoder::getLatDMS(){
     return lat_degrees;
 }
@@ -70,6 +76,9 @@ void NMEADecoder::mygps_loop(){
                 //Serial.printf("last fix at %lu msecs, %lu msecs since now\r\n",LastFixAtMsecs, millis()-LastFixAtMsecs );
             
             num_satellites = atoi(f8);
+
+            strcpy(gps_time, f2);
+            gps_time[6] = 0;
             
         }
 

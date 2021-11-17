@@ -35,7 +35,7 @@
 #define CFG_APRS_LOGIN        "aprs_login"
 #define CFG_APRS_PASS         "aprs_password"
 #define CFG_APRS_FILTER        "r/35.60/139.80/25"
-#define CFG_APRS_RAW_BKN        "IW5ALZ-7>APZMDM,WIDE1-1:!4303.51N/01036.59E-LoRA Tracker 433.775MHz/BW125/SF10/CR5" 
+#define CFG_APRS_RAW_BKN        "IW5ALZ-7>APZMDM,WIDE1-1:!4319.15N/01120.61E-LoRA Tracker 433.775MHz/BW125/SF10/CR5" 
 
 #define CFG_WIFI_SSID         "ap-stazione"
 #define CFG_WIFI_KEY          "1111111111"
@@ -54,3 +54,5 @@
 #define CFG_PTT_PIN           12
 #define CFG_PTT_TX_DELAY_MS   50
 #define CFG_PTT_TX_TAIL_MS    10
+
+#define CFG_USE_GPS           false  
