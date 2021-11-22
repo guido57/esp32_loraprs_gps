@@ -1,23 +1,21 @@
 #include <Arduino.h>
 
 #include <arduino-timer.h>
-#include "WiFi.h"
-#include "loraprs_service.h"
-#include "mygps.h"
+#include <WiFi.h>
+#include <loraprs_service.h>
+#include <mygps.h>
+#include <config.h>
+#include <captive_portal.h>
 
-#if __has_include("/tmp/esp32_loraprs_config.h")
-#pragma message("Using external config")
-#include "/tmp/esp32_loraprs_config.h"
-#else
-#pragma message("Using default config")
-#include "config.h"
-#endif
 
 #if CFG_IS_CLIENT_MODE == true
 #pragma message("Configured for client mode")
 #else
 #pragma message("Configured for server mode")
 #endif
+
+// The configuration class
+Config_ns::ConfigClass cc;
 
 
 void initializeConfig(LoraPrs::Config &cfg) {
@@ -42,8 +40,8 @@ void initializeConfig(LoraPrs::Config &cfg) {
   cfg.LoraUseIsr = CFG_LORA_USE_ISR;  // set to true for incoming packet ISR usage (stream mode, e.g. speech)
 
   // GPS pinout
-  #define RXD2 15
-  #define TXD2 12
+  //#define RXD2 15
+  //#define TXD2 12
 
   // aprs configuration
   cfg.AprsHost = "iz5oqo.duckdns.org";
@@ -100,28 +98,34 @@ void setup() {
   pinMode(BUILTIN_LED, OUTPUT);
   digitalWrite(BUILTIN_LED, 1);
 
-  // Serial2 is used by GPS
-  Serial2.begin(9600, SERIAL_8N1, RXD2, TXD2);
   
-  Serial.begin(SERIAL_BAUD_RATE);
+  Serial.begin(115200);
   while (!Serial);
+
   
+  cc.Init("/my-config");
+
+   // Serial2 is used by GPS
+  //Serial2.begin(9600, SERIAL_8N1, RXD2, TXD2);
+  Serial2.begin(9600, SERIAL_8N1, cc["GPSRxPin"]->val_int,cc["GPSTxPin"]->val_int );
+
   LoraPrs::Config config;
 
   initializeConfig(config);
-  
-  
+   
   loraPrsService.setup(config);
 
+  CaptivePortalSetup();
   //marco mod for sleep test
   //esp_sleep_enable_timer_wakeup(10 * 1000 * 1000);
   //esp_sleep_enable_ext0_wakeup((gpio_num_t)CFG_LORA_PIN_DIO0, 1);
-  watchdogLedTimer.every(LED_TOGGLE_PERIOD, toggleWatchdogLed);
+  //watchdogLedTimer.every(cc["LedToggleMs"]->val_long, toggleWatchdogLed);
 
 }
 
 void loop() {
   loraPrsService.loop();
+  WiFi_loop();
   //watchdogLedTimer.tick();
 }
 

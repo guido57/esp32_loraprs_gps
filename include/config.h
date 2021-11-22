@@ -1,58 +1,26 @@
-#define LED_TOGGLE_PERIOD     1000
+#include <Arduino.h>
+#include <default.h>
+#include <entry.h>
 
-#define SERIAL_BAUD_RATE      115200
+namespace Config_ns {
 
-// change pinouts if not defined through native board LORA_* definitions
-#ifndef LORA_RST
-#pragma message("LoRa pin definitions are not found, redefining...")
-#define LORA_RST              14
-#define LORA_IRQ              26
-#endif
+  extern std::vector<Entry> Entries;
 
-#ifndef BUILTIN_LED
-#pragma message("BUILDIN_LED is not found, defining as 2")
-#define BUILTIN_LED           2
-#endif
+  class ConfigClass {
+    
+    public:  
+      void Init(String filename);
+      Entry * GetEntryByKey(String key);
+      Entry operator [](int i) const;
+      Entry * operator [](String key) ;
+      void SaveEntriesToSPIFFS();
+      void SaveDefaultsToSPIFFS();
+      void LoadEntriesFromSPIFFS();
+      String filename;
+      void printFile();
+      int size();
 
-#define CFG_IS_CLIENT_MODE    false // set to false to enable beaconing. It was true
-#define CFG_USE_DISPLAY       false
 
-#define CFG_LORA_PIN_SS       5 //GG it was
-#define CFG_LORA_PIN_RST      LORA_RST
-#define CFG_LORA_PIN_DIO0     LORA_IRQ
-#define CFG_LORA_USE_ISR      false // set to true for incoming packet ISR usage (stream mode, e.g. speech)
+  };
 
-#define CFG_LORA_FREQ         433.775e6 
-#define CFG_LORA_BW           125e3
-#define CFG_LORA_SF           10
-#define CFG_LORA_CR           5
-#define CFG_LORA_PWR          20
-#define CFG_LORA_ENABLE_CRC   true  // set to false for speech data
-
-#define CFG_BT_NAME           "loraprs"
-#define CFG_BT_USE_BLE        false // set to true to use bluetooth low energy (for ios devices)
-
-#define CFG_APRS_LOGIN        "aprs_login"
-#define CFG_APRS_PASS         "aprs_password"
-#define CFG_APRS_FILTER        "r/35.60/139.80/25"
-#define CFG_APRS_RAW_BKN        "IW5ALZ-7>APZMDM,WIDE1-1:!4319.15N/01120.61E-LoRA Tracker 433.775MHz/BW125/SF10/CR5" 
-
-#define CFG_WIFI_SSID         "ap-stazione"
-#define CFG_WIFI_KEY          "1111111111"
-
-#define CFG_FREQ_CORR         false   // NB! incoming interrupts may stop working on frequent corrections when enabled
-#define CFG_FREQ_CORR_DELTA   1000    //      test with your module before heavy usage
-
-#define CFG_PERSISTENT_APRS   false
-#define CFG_DIGIREPEAT        false
-#define CFG_RF_TO_IS          false
-#define CFG_IS_TO_RF          false
-#define CFG_BEACON            true   // esp32_loraprs_gps acts as a simple beacon (see the function sendPeriodicBeacon() )
-#define CFG_KISS_EXTENSIONS   false  //inhibit the connection (via bluetooth) between APRSDROID and esp32_loraprs_gps 
-
-#define CFG_PTT_ENABLE        false
-#define CFG_PTT_PIN           12
-#define CFG_PTT_TX_DELAY_MS   50
-#define CFG_PTT_TX_TAIL_MS    10
-
-#define CFG_USE_GPS           false  
+}

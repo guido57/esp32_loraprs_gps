@@ -39,9 +39,9 @@ void Service::setup(const Config &conf)
   setupLora(config_.LoraFreq, config_.LoraBw, config_.LoraSf, 
     config_.LoraCodingRate, config_.LoraPower, config_.LoraSync, config_.LoraEnableCrc);
 
-  if (needsWifi()) {
-    setupWifi(config_.WifiSsid, config_.WifiKey);
-  }
+  //if (needsWifi()) {
+  //  setupWifi(config_.WifiSsid, config_.WifiKey);
+  //}
 
   if (needsBt() || config_.BtName.length() > 0) {
     setupBt(config_.BtName);
@@ -196,7 +196,7 @@ void Service::setupBt(const String &btName)
 void Service::loop()
 {
   if (needsWifi() && WiFi.status() != WL_CONNECTED) {
-    reconnectWifi();
+    //reconnectWifi();
   }
   if (needsAprsis() && !aprsisConn_.connected() && config_.EnablePersistentAprsConnection) {
     reconnectAprsis();
