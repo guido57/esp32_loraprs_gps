@@ -31,5 +31,6 @@
 *.out
 *.app
 
-# all the .pio folder
+# all the .pio and .vscode folders
 .pio/
+.vscode/
